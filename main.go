@@ -26,8 +26,20 @@ const (
 )
 
 type Event struct {
-	User string
-	Repo string
+	EventType `json:"type"`
+	Actor     `json:"actor"`
+	Repo      `json:"repo"`
+	Payload   json.RawMessage `json:"payload"`
+	Public    bool            `json:"public"`
+	CreatedAt time.Time       `json:"created_at"`
+}
+
+type Actor struct {
+	Login string `json:"login"`
+}
+
+type Repo struct {
+	Name string `json:"name"` // Repo name include username, eg. torvalds/linux
 }
 
 func GetJSONFromURL(url string) ([]byte, error) {
