@@ -26,7 +26,8 @@ const (
 )
 
 type Event struct {
-	EventType `json:"type"`
+	TypeOfEvent string `json:"type"` // eg CreateEvent
+	EventType
 	Actor     `json:"actor"`
 	Repo      `json:"repo"`
 	Payload   json.RawMessage `json:"payload"`
@@ -40,6 +41,38 @@ type Actor struct {
 
 type Repo struct {
 	Name string `json:"name"` // Repo name include username, eg. torvalds/linux
+}
+
+func (e *Event) FormatEvent() string {
+	switch e.TypeOfEvent {
+	case "CreateEvent":
+		e.EventType = Create
+
+		var payload struct {
+			Ref          string `json:"ref"`      // name of ref
+			RefType      string `json:"ref_type"` // eg "branch"
+			MasterBranch string `json:"master_branch"`
+			Description  string `json:"description"`
+		}
+
+		if err := json.Unmarshal(e.Payload, &payload); err != nil {
+			panic(err)
+		}
+
+		desc := func() string {
+			if payload.Description == "" {
+				return ""
+			}
+			return " Description: " + payload.Description
+		}()
+
+		if payload.Ref == payload.MasterBranch {
+			return "- Created a new repository (" + e.Name + ")" + desc
+		}
+		return "- Created a new " + payload.RefType + " in " + e.Name + " (" + payload.Ref + desc + ")"
+	default:
+		return "Unknown event"
+	}
 }
 
 func GetJSONFromURL(url string) ([]byte, error) {
@@ -82,5 +115,12 @@ func main() {
 		os.Exit(1)
 	}
 
-	fmt.Println(string(jsonData))
+	var events []Event
+	if err := json.Unmarshal(jsonData, &events); err != nil {
+		panic(err)
+	}
+
+	for _, e := range events {
+		fmt.Println(e.FormatEvent())
+	}
 }
