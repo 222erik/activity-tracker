@@ -15,7 +15,6 @@ type EventType int
 const (
 	Create EventType = iota
 	Delete
-	Discussion
 	Issues
 	IssueComment
 	Fork
@@ -70,8 +69,43 @@ func (e *Event) FormatEvent() string {
 			return "- Created a new repository (" + e.Name + ")" + desc
 		}
 		return "- Created a new " + payload.RefType + " in " + e.Name + " (" + payload.Ref + desc + ")"
+
+	case "DeleteEvent":
+		e.EventType = Delete
+
+		var payload struct {
+			Ref     string `json:"ref"`      // name of ref
+			RefType string `json:"ref_type"` // eg "branch"
+		}
+
+		if err := json.Unmarshal(e.Payload, &payload); err != nil {
+			panic(err)
+		}
+
+		return "- Deleted " + payload.RefType + " " + payload.Ref + " in " + e.Name
+
+	case "IssueCommentEvent":
+		e.EventType = IssueComment
+
+		var payload struct {
+			Action string `json:"action"`
+			Issue  struct {
+				URL string `json:"html_url"`
+			} `json:"issue"`
+		}
+
+		if err := json.Unmarshal(e.Payload, &payload); err != nil {
+			panic(err)
+		}
+
+		if payload.Action != "created" {
+			return "Unknown"
+		}
+
+		return "- Commented on a issue (" + payload.Issue.URL + ")"
+
 	default:
-		return "Unknown event"
+		return "Unknown"
 	}
 }
 
