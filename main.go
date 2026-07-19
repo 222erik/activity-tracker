@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strconv"
 	"time"
 )
 
@@ -20,7 +21,6 @@ const (
 	Fork
 	Push
 	PullRequest
-	Release
 	Watch
 )
 
@@ -133,6 +133,20 @@ func (e *Event) FormatEvent() string {
 		}
 
 		return "- Pushed commits to " + e.Name + " (on " + payload.Ref + ")"
+
+	case "PullRequestEvent":
+		e.EventType = PullRequest
+
+		var payload struct {
+			Action string `json:"action"`
+			Number int    `json:"number"`
+		}
+
+		if err := json.Unmarshal(e.Payload, &payload); err != nil {
+			panic(err)
+		}
+
+		return "- " + string(payload.Action[0]-('a'-'A')) + payload.Action[1:] + " pull request in " + e.Name + " (number " + strconv.Itoa(payload.Number) + ")"
 
 	default:
 		return "Unknown"
