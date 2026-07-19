@@ -121,6 +121,19 @@ func (e *Event) FormatEvent() string {
 
 		return "- Forked a repository (" + e.Name + ")"
 
+	case "PushEvent":
+		e.EventType = Push
+
+		var payload struct {
+			Ref string `json:"ref"`
+		}
+
+		if err := json.Unmarshal(e.Payload, &payload); err != nil {
+			panic(err)
+		}
+
+		return "- Pushed commits to " + e.Name + " (on " + payload.Ref + ")"
+
 	default:
 		return "Unknown"
 	}
