@@ -148,6 +148,11 @@ func (e *Event) FormatEvent() string {
 
 		return "- " + string(payload.Action[0]-('a'-'A')) + payload.Action[1:] + " pull request in " + e.Name + " (number " + strconv.Itoa(payload.Number) + ")"
 
+	case "WatchEvent":
+		e.EventType = Watch
+
+		return "- Starred " + e.Name
+
 	default:
 		return "Unknown"
 	}
