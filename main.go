@@ -104,6 +104,23 @@ func (e *Event) FormatEvent() string {
 
 		return "- Commented on a issue (" + payload.Issue.URL + ")"
 
+	case "ForkEvent":
+		e.EventType = Fork
+
+		var payload struct {
+			Action string `json:"action"`
+		}
+
+		if err := json.Unmarshal(e.Payload, &payload); err != nil {
+			panic(err)
+		}
+
+		if payload.Action != "forked" {
+			return "Unknown (fork)"
+		}
+
+		return "- Forked a repository (" + e.Name + ")"
+
 	default:
 		return "Unknown"
 	}
