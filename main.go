@@ -197,6 +197,9 @@ func main() {
 		fmt.Println(err)
 		os.Exit(1)
 	}
+	if len(jsonData) == 2 {
+		fmt.Println("The user doesn't have any activity in the last 30 days")
+	}
 
 	var events []Event
 	if err := json.Unmarshal(jsonData, &events); err != nil {
