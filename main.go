@@ -1,37 +1,22 @@
 package main
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"time"
-)
-
-type EventType int
-
-const (
-	Create EventType = iota
-	Delete
-	Issues
-	IssueComment
-	Fork
-	Push
-	PullRequest
-	Watch
 )
 
 type Event struct {
 	TypeOfEvent string `json:"type"` // eg CreateEvent
-	EventType
-	Actor     `json:"actor"`
-	Repo      `json:"repo"`
-	Payload   json.RawMessage `json:"payload"`
-	Public    bool            `json:"public"`
-	CreatedAt time.Time       `json:"created_at"`
+	Actor       `json:"actor"`
+	Repo        `json:"repo"`
+	Payload     json.RawMessage `json:"payload"`
+	Public      bool            `json:"public"`
+	CreatedAt   time.Time       `json:"created_at"`
 }
 
 type Actor struct {
@@ -42,20 +27,44 @@ type Repo struct {
 	Name string `json:"name"` // Repo name include username, eg. torvalds/linux
 }
 
-func (e *Event) FormatEvent() string {
+type CreatePayload struct {
+	Ref          string `json:"ref"`      // name of ref
+	RefType      string `json:"ref_type"` // eg "branch"
+	MasterBranch string `json:"master_branch"`
+	Description  string `json:"description"`
+}
+
+type DeletePayload struct {
+	Ref     string `json:"ref"`      // name of ref
+	RefType string `json:"ref_type"` // eg "branch"
+}
+
+type IssueCommentPayload struct {
+	Action string `json:"action"`
+	Issue  struct {
+		URL string `json:"html_url"`
+	} `json:"issue"`
+}
+
+type ForkPayload struct {
+	Action string `json:"action"`
+}
+
+type PushPayload struct {
+	Ref string `json:"ref"`
+}
+
+type PullRequestPayload struct {
+	Action string `json:"action"`
+	Number int    `json:"number"`
+}
+
+func (e *Event) FormatEvent() (string, error) {
 	switch e.TypeOfEvent {
 	case "CreateEvent":
-		e.EventType = Create
-
-		var payload struct {
-			Ref          string `json:"ref"`      // name of ref
-			RefType      string `json:"ref_type"` // eg "branch"
-			MasterBranch string `json:"master_branch"`
-			Description  string `json:"description"`
-		}
-
+		var payload CreatePayload
 		if err := json.Unmarshal(e.Payload, &payload); err != nil {
-			panic(err)
+			return "", err
 		}
 
 		desc := func() string {
@@ -66,99 +75,67 @@ func (e *Event) FormatEvent() string {
 		}()
 
 		if payload.Ref == payload.MasterBranch {
-			return "- Created a new repository (" + e.Name + ")" + desc
+			return "- Created a new repository (" + e.Name + ")" + desc, nil
 		}
-		return "- Created a new " + payload.RefType + " in " + e.Name + " (" + payload.Ref + desc + ")"
+		return fmt.Sprintf("- Created a new %v in %v (%v%v)", payload.RefType, e.Name, payload.Ref, desc), nil
 
 	case "DeleteEvent":
-		e.EventType = Delete
-
-		var payload struct {
-			Ref     string `json:"ref"`      // name of ref
-			RefType string `json:"ref_type"` // eg "branch"
-		}
-
+		var payload DeletePayload
 		if err := json.Unmarshal(e.Payload, &payload); err != nil {
-			panic(err)
+			return "", err
 		}
 
-		return "- Deleted " + payload.RefType + " " + payload.Ref + " in " + e.Name
+		return fmt.Sprintf("- Deleted %v %v in %v", payload.RefType, payload.Ref, e.Name), nil
 
 	case "IssueCommentEvent":
-		e.EventType = IssueComment
-
-		var payload struct {
-			Action string `json:"action"`
-			Issue  struct {
-				URL string `json:"html_url"`
-			} `json:"issue"`
-		}
-
+		var payload IssueCommentPayload
 		if err := json.Unmarshal(e.Payload, &payload); err != nil {
-			panic(err)
+			return "", err
 		}
 
 		if payload.Action != "created" {
-			return "Unknown"
+			return "Unknown", nil
 		}
 
-		return "- Commented on a issue (" + payload.Issue.URL + ")"
+		return fmt.Sprintf("- Commented on a issue (%v)", payload.Issue.URL), nil
 
 	case "ForkEvent":
-		e.EventType = Fork
-
-		var payload struct {
-			Action string `json:"action"`
-		}
-
+		var payload ForkPayload
 		if err := json.Unmarshal(e.Payload, &payload); err != nil {
-			panic(err)
+			return "", err
 		}
 
 		if payload.Action != "forked" {
-			return "Unknown (fork)"
+			return "Unknown (fork)", nil
 		}
 
-		return "- Forked a repository (" + e.Name + ")"
+		return fmt.Sprintf("- Forked a repository (%v)", e.Name), nil
 
 	case "PushEvent":
-		e.EventType = Push
-
-		var payload struct {
-			Ref string `json:"ref"`
-		}
-
+		var payload PushPayload
 		if err := json.Unmarshal(e.Payload, &payload); err != nil {
-			panic(err)
+			return "", err
 		}
 
-		return "- Pushed commits to " + e.Name + " (on " + payload.Ref + ")"
+		return fmt.Sprintf("- Pushed commits to %v (on %v)", e.Name, payload.Ref), nil
 
 	case "PullRequestEvent":
-		e.EventType = PullRequest
-
-		var payload struct {
-			Action string `json:"action"`
-			Number int    `json:"number"`
-		}
-
+		var payload PullRequestPayload
 		if err := json.Unmarshal(e.Payload, &payload); err != nil {
-			panic(err)
+			return "", err
 		}
 
-		return "- " + string(payload.Action[0]-('a'-'A')) + payload.Action[1:] + " pull request in " + e.Name + " (number " + strconv.Itoa(payload.Number) + ")"
+		return fmt.Sprintf("- %v pull request in %v (number %v)", strings.ToUpper(payload.Action[:1])+payload.Action[1:], e.Name, strconv.Itoa(payload.Number)), nil
 
 	case "WatchEvent":
-		e.EventType = Watch
-
-		return "- Starred " + e.Name
+		return fmt.Sprintf("- Starred %v", e.Name), nil
 
 	default:
-		return "Unknown"
+		return "Unknown", nil
 	}
 }
 
-func GetJSONFromURL(url string) ([]byte, error) {
+func GetEventsFromURL(url string) ([]Event, error) {
 	client := &http.Client{
 		Timeout: 5 * time.Second,
 	}
@@ -173,16 +150,12 @@ func GetJSONFromURL(url string) ([]byte, error) {
 		return nil, fmt.Errorf("Returned status: %v", resp.Status)
 	}
 
-	body, _ := io.ReadAll(resp.Body)
-
-	var buff bytes.Buffer
-	err = json.Indent(&buff, body, "", "  ")
-	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
+	var events []Event
+	if err := json.NewDecoder(resp.Body).Decode(&events); err != nil {
+		return nil, err
 	}
 
-	return buff.Bytes(), nil
+	return events, nil
 }
 
 func main() {
@@ -192,21 +165,21 @@ func main() {
 	}
 
 	user := os.Args[1]
-	jsonData, err := GetJSONFromURL("https://api.github.com/users/" + user + "/events")
+	events, err := GetEventsFromURL("https://api.github.com/users/" + user + "/events")
 	if err != nil {
-		fmt.Println(err)
+		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-	if len(jsonData) == 2 {
-		fmt.Println("The user doesn't have any activity in the last 30 days")
-	}
-
-	var events []Event
-	if err := json.Unmarshal(jsonData, &events); err != nil {
-		panic(err)
+	if len(events) == 0 {
+		fmt.Println("The user doesn't have any activity")
 	}
 
 	for _, e := range events {
-		fmt.Println(e.FormatEvent())
+		action, err := e.FormatEvent()
+		if err != nil {
+			fmt.Println("error")
+			continue
+		}
+		fmt.Println(action)
 	}
 }
